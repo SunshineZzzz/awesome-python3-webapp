@@ -5,6 +5,8 @@ __author__ = "Sunshine'Z"
 import asyncio, logging
 import aiomysql
 
+logging.basicConfig(level=logging.INFO)
+
 def log(sql, args=()):
 	logging.info('SQL: %s, ARGS: %s' % (sql, args))
 
@@ -99,7 +101,7 @@ class Field(object):
 		self.default = default
 
 	def __str__(self):
-		return '<%s, %s, %s>' % (self.__class__.__name__, self.column_type, slef.name)
+		return '<%s, %s, %s>' % (self.__class__.__name__, self.column_type, self.name)
 
 class StringField(Field):
 	'''
@@ -112,7 +114,7 @@ class BooleanField(Field):
 	'''
 	数据库中布尔类型
 	'''
-	def __init__(self, name=None, ddl='BOOLEAN'):
+	def __init__(self, name=None, default = False, ddl='BOOLEAN'):
 		super().__init__(name, ddl, False, default)
 
 class IntegerFiled(Field):
