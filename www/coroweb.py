@@ -14,7 +14,23 @@ def get(path):
 	:return:返回装饰后的函数
 	'''
 	def decorator(func):
-		# wrapper.__name__ = func.__name__
+		'''
+		functools.update_wrapper(wrapper, wrapped[, assigned][, updated])
+		Update a wrapper function to look like the wrapped function. 
+		The optional arguments are tuples to specify which attributes of the original 
+		function are assigned directly to the matching attributes on the wrapper 
+		function and which attributes of the wrapper function are updated with the 
+		corresponding attributes from the original function. The default values for 
+		these arguments are the module level constants WRAPPER_ASSIGNMENTS 
+		(which assigns to the wrapper function’s __name__, __module__ and __doc__, 
+		the documentation string) and WRAPPER_UPDATES (which updates the wrapper 
+		function’s __dict__, i.e. the instance dictionary).
+
+		functools.wraps(wrapped[, assigned][, updated])
+		This is a convenience function for invoking update_wrapper() as a function decorator when defining 
+		a wrapper function. It is equivalent to partial(update_wrapper, wrapped=wrapped, assigned=assigned, 
+		updated=updated).
+		'''
 		@functools.wraps(func)
 		def wrapper(*args, **kw):
 			return func(*args, **kw)
@@ -112,7 +128,6 @@ def has_request_arg(fn):
 	params = sig.parameters
 	found = False
 	for name, param in params.items():
-		print(param.kind)
 		if name == 'request':
 			found = True
 			continue
@@ -121,7 +136,10 @@ def has_request_arg(fn):
 		This corresponds to a *args parameter in a Python function definition.
 		
 		POSITIONAL_ONLY - Value must be supplied as a positional argument.
-		
+		Python has no explicit syntax for defining positional-only parameters, 
+		but many built-in and extension module functions 
+		(especially those that accept only one or two parameters) accept them.
+
 		POSITIONAL_OR_KEYWORD - Value may be supplied as either a keyword or positional argument 
 		(this is the standard binding behaviour for functions implemented in Python.)
 		'''
@@ -141,20 +159,27 @@ class RequestHandler(object):
 	'''
 	def __init__(self, app, fn):
 		self._app = app
-		self._fn = fn
+		self._func = fn
+		# 指定函数是否有request参数，并且request后面可以的参数只能是*args, **kw, * a, b ...
 		self._has_request_arg = has_request_arg(fn)
+		# 指定函数是否有关键字参数
 		self._has_var_kw_arg =  has_var_kw_arg(fn)
+		# 指定函数是否有命名关键字参数
 		self._has_named_kw_args = has_named_kw_args(fn)
+		# 获取指定函数的命名关键字参数
 		self._named_kw_args = get_named_kw_args(fn)
+		# 获取指定函数的没有默认值的命名关键字参数
 		self._required_kw_args = get_required_kw_args(fn)
 
 	# 可以将实例视为函数
 	async def __call__(self, request):
+		logging.debug('RequestHandler content_type: %s, query_string: %s, match_info: %s' \
+			% (request.content_type, request.query_string, dict(**request.match_info)))
 		kw = None
-		# 如果函数有  命名关键字参数或者关键字参数
-		if self._has_named_kw_args or self._has_var_kw_arg:
+		# 如果函数有 关键字参数 或者 命名关键字参数 或者 没有默认值的命名关键字参数
+		if self._has_var_kw_arg or self._has_named_kw_args or self._required_kw_args:
 			# 判断客户端发来的方法是否为POST
-			if request.method = 'POST':
+			if request.method == 'POST':
 				# 查询看客户端有没有提交的数据格式
 				if not request.content_type:
 					# HTTPClientError
@@ -167,13 +192,12 @@ class RequestHandler(object):
 					if not isinstance(params, dict):
 						return web.HTTPBadRequest('JSON body must be object.')
 					kw = params
-				#
 				elif ct.startswith('application/x-www-form-urlencoded') or ct.startswith('multipart/form-data'):
 					params = await request.post()
 					kw = dict(**params)
 				else:
 					return web.HTTPBadRequest('Unsupported Content-Type: %s' % request.content_type)
-			if request.method = 'GET':
+			if request.method == 'GET':
 				# The query string in the URL, e.g., id=10
 				qs = request.query_string
 				if qs:
@@ -199,34 +223,43 @@ class RequestHandler(object):
 					'''
 					for k, v in parse.parse_qs(qs, True).items():
 						kw[k] = v[0]
-			if kw is None:
-				# match_info - Read-only property with AbstractMatchInfo instance for result of route resolving.
-				kw = dict(**request.match_info)
-			else:
-				# 当函数参数没有关键字参数时，移去request除命名关键字参数所有的参数信息
-				if not self._has_var_kw_arg and self._named_kw_args:
-					# remove all unamed kw:
-					copy = dict()
-					# 遍历命名关键字参数
-					for name in self._named_kw_args:
-						if name in kw:
-							copy[name] = kw[name]
-					kw = copy
-				for k, v in request.match_info.items():
-					if k in kw:
-						logging.warning('Duplicate arg name in named arg and kw args: %s' % k)
-					kw[k] = v
-				# 假如命名关键字参数(没有附加默认值)，request没有提供相应的数值，报错
-				if self._has_request_arg:
-					for name in self._required_kw_args:
-						if name not in kw:
-							return web.HTTPBadRequest(text='Missing argument: %s'%(name))
-				logging.info('call with args: %s' % str(kw))
-				try:
-					r = await self._func(**kw)
-					return r
-				except APIError as e:
-					return dict(error=e.error, data=e.data, message=e.message)
+		if kw is None:
+			# match_info - Read-only property with AbstractMatchInfo instance for result of route resolving.
+			kw = dict(**request.match_info)
+		else:
+			# 当函数参数没有关键字参数时，但是具有命名关键字参数
+			# 对于函数而言命名关键字参数必须要有
+			if not self._has_var_kw_arg and self._named_kw_args:
+				# remove all unamed kw:
+				copy = dict()
+				# 遍历命名关键字参数
+				for name in self._named_kw_args:
+					if name in kw:
+						copy[name] = kw[name]
+				kw = copy
+			for k, v in request.match_info.items():
+				if k in kw:
+					logging.warning('Duplicate arg name in named arg and kw args: %s' % k)
+				kw[k] = v
+		if self._has_request_arg:
+			kw['request'] = request
+		if self._required_kw_args:
+			# 假如命名关键字参数(没有默认值)，request没有提供相应的数值，报错
+			for name in self._required_kw_args:
+				if name not in kw:
+					return web.HTTPBadRequest(text='Missing argument: %s'%(name))
+		logging.info('call with args: %s' % str(kw))
+		try:
+			r = await self._func(**kw)
+			return r
+		except APIError as e:
+			return dict(error=e.error, data=e.data, message=e.message)
+
+	def __str__(self):
+		return 'RequestHandler self: %s, app: %s, fn: %s, has_request_arg: %s, has_var_kw_arg: %s, \
+		has_named_kw_args: %s, named_kw_args: %s, required_kw_args: %s' % (\
+			hex(id(self)), self._app, self._func, self._has_request_arg, self._has_var_kw_arg, \
+			self._has_named_kw_args, self._named_kw_args, self._required_kw_args)
 
 def add_static(app):
 	'''
@@ -268,7 +301,9 @@ def add_route(app, fn):
 	Append handler to the end of route table.
 
 	'''
-	app.router.add_route(method, path, RequestHandler(app, fn))
+	RH = RequestHandler(app, fn)
+	app.router.add_route(method, path, RH)
+	logging.debug('add_route RequestHandler: %s' % RH)
 
 def add_routes(app, moudle_name):
 	'''
@@ -291,5 +326,6 @@ def add_routes(app, moudle_name):
 			method = getattr(fn, '__method__', None)
 			path = getattr(fn, '__route__', None)
 			if method and path:
+				logging.debug('add_routes fn.__name__: %s, fn.__method__: %s, fn.__route__: %s' \
+					% (fn.__name__, fn.__method__, fn.__route__))
 				add_route(app, fn)
-	

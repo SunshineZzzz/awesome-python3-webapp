@@ -9,6 +9,7 @@ def next_id():
 	'''
 	:return:随机创建唯一id字符串，作为主键缺省值
 	'''
+	# uuid - universally unique Identifier
 	return '%015d%s000' % (int(time.time() * 1000), uuid.uuid4().hex)
 
 class User(Model):
@@ -20,7 +21,7 @@ class User(Model):
 	admin = BooleanField()
 	name = StringField(ddl = 'VARCHAR(50)')
 	image = StringField(ddl = 'VARCHAR(500)')
-	create_at = FloatField(default = time.time)
+	created_at = FloatField(default = time.time)
 
 class Blog(Model):
 	__table__ = 'blogs'
@@ -40,4 +41,4 @@ class Comment(Model):
 	user_name = StringField(ddl = 'VARCHAR(50)')
 	user_image = StringField(ddl = 'VARCHAR(50)')
 	content = TextField()
-	create_at = FloatField(default=time.time)
+	created_at = FloatField(default=time.time)

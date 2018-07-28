@@ -4,6 +4,7 @@ __author__ = "Sunshine'Z"
 
 import asyncio, logging
 import aiomysql
+import  json
 
 logging.basicConfig(level=logging.INFO)
 
@@ -184,7 +185,7 @@ class ModelMetaclass(type):
 		# 除去主键以外的属性名称
 		attrs['__fields__'] = fields
 		# 构造默认的SELECT, INSERT, UPDATE和DELETE语句
-		attrs['__select__'] = 'SELECT `%s`, %s FROM `%s`' % (primaryKey, ','.join(escaped_fields), tableName)
+		attrs['__select__'] = 'SELECT `%s`, %s FROM `%s` ' % (primaryKey, ','.join(escaped_fields), tableName)
 		attrs['__insert__'] = 'INSERT INTO `%s` (%s, `%s`) VALUES(%s)' % (tableName, ','.join(escaped_fields), primaryKey,\
 			create_args_string(len(escaped_fields) + 1))
 		attrs['__update__'] = 'UPDATE `%s` SET %s WHERE `%s` = ?' % (tableName, \
@@ -232,17 +233,17 @@ class Model(dict, metaclass=ModelMetaclass):
 		'''
 		sql = [cls.__select__]
 		if where:
-			sql.append('WHERE')
+			sql.append('WHERE ')
 			sql.append(where)
 		if args is None:
 			args = []
 		orderBy = kw.get('orderBy', None)
 		if orderBy:
-			sql.append('ORDER BY')
+			sql.append('ORDER BY ')
 			sql.append(orderBy)
 		limit = kw.get('limit', None)
 		if limit is not None:
-			sql.append('LIMIT')
+			sql.append('LIMIT ')
 			if isinstance(limit, int):
 				sql.append('?')
 				args.append(limit)
@@ -252,6 +253,7 @@ class Model(dict, metaclass=ModelMetaclass):
 			else:
 				raise ValueError('Invalid limit value: %s' % str(limit))
 		rs = await select(''.join(sql), args)
+		logging.debug('findAll result: %s' % json.dumps(rs))
 		return [cls(**r) for r in rs]
 
 	@classmethod
@@ -285,15 +287,13 @@ class Model(dict, metaclass=ModelMetaclass):
 			return None
 		return cls(**rs[0])
 
-	@classmethod
 	async def save(self):
 		args = list(map(self.getValueOrDefault, self.__fields__))
 		args.append(self.getValueOrDefault(self.__primary_key__))
 		rows = await execute(self.__insert__, args)
-		if row != 1:
+		if rows != 1:
 			logging.warn('failed to insert record: affected rows: %s' % rows)
 
-	@classmethod
 	async def update(self):
 		args = list(map(self.getValue, self.__fields__))
 		args.append(self.getValue(self.__primary_key__))
@@ -301,7 +301,6 @@ class Model(dict, metaclass=ModelMetaclass):
 		if rows != 1:
 			logging.warn('failed to update by primary key: affected rows: %s' % rows)
 
-	@classmethod
 	async def remove(self):
 		args = [self.getValue(self.__primary_key__)]
 		rows = await execute(self.__delete__, args)
