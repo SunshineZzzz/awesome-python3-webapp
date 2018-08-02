@@ -243,12 +243,12 @@ class Model(dict, metaclass=ModelMetaclass):
 			sql.append(orderBy)
 		limit = kw.get('limit', None)
 		if limit is not None:
-			sql.append('LIMIT ')
+			sql.append(' LIMIT ')
 			if isinstance(limit, int):
 				sql.append('?')
 				args.append(limit)
 			elif isinstance(limit, tuple) and len(limit) == 2:
-				sql.append('?', '?')
+				sql.append('?, ?')
 				args.extend(limit)
 			else:
 				raise ValueError('Invalid limit value: %s' % str(limit))
@@ -265,7 +265,7 @@ class Model(dict, metaclass=ModelMetaclass):
 		:param args: 参数列表
 		:return: 数量
 		'''
-		sql = ['SELECT COUNT(%s) AS _num_ FROM `%s`' % (selectField, cls.__table__)]
+		sql = ['SELECT %s AS _num_ FROM `%s`' % (selectField, cls.__table__)]
 		if where:
 			sql.append('where')
 			sql.append(where)

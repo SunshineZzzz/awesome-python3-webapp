@@ -335,14 +335,14 @@ $(function () {
 	});
 });
 
-//ajax submit form
+// ajax submit form
 function _httpJSON(method, url, data, callback) {
 	var opt = {
 		type: method,
 		dataType: 'json'
 	};
 	if (method === 'GET') {
-		opt.utl = url + '?' + data;
+		opt.url = url + '?' + data;
 	}
 	if (method === 'POST') {
 		opt.url = url;
@@ -360,3 +360,132 @@ function _httpJSON(method, url, data, callback) {
 		return callback({'error': 'http_bad_response', 'data': '' + jqXHR.status, 'message': '网络好像出问题了 (HTTP ' + jqXHR.status + ')'});
 	});
 }
+
+// get for ajax
+function getJSON(url, data, callback) {
+	if (arguments.length === 2) {
+		callback = data;
+		data = {};
+	}
+	if (typeof(data) === 'object') {
+		var arr = [];
+		/*
+		A generic iterator function, which can be used to seamlessly iterate over both objects and arrays. 
+		Arrays and array-like objects with a length property (such as a function's arguments object) are 
+		iterated by numeric index, from 0 to length-1. Other objects are iterated via their named properties.
+		*/
+		$.each(data, function(k, v) {
+			arr.push(k + '=' + encodeURIComponent(v));
+		});
+		data = arr.join('&');
+	}
+	_httpJSON('GET', url, data, callback)
+}
+
+// post for ajax
+function postJSON(url, data, callback) {
+	if(arguments.length === 2) {
+		callback = data;
+		data = {};
+	}
+	_httpJSON('POST', url, data, callback)
+}
+
+// 展示错误
+function _display_error($obj, err) {
+	if ($obj.is(':visible')) {
+		$obj.hide();
+	}
+
+	var msg = err.message || String(err);
+	var L = ['<div class="uk-alert uk-alert-danger">'];
+	L.push('<p>Error: ');
+	L.push(msg);
+	L.push('</p><p>Code: ');
+	L.push(err.error || '500');
+	L.push('</p></div>');
+	// Display the matched elements with a sliding motion.
+	$obj.html(L.join('')).slideDown();
+}
+
+// error
+function error(err) {
+	_display_error($('#error'), err);
+}
+
+// fatal
+function fatal(err) {
+	_display_error($('#loading'), err);
+}
+
+// extend Vue
+if (typeof(Vue)!=='undefined') {
+	Vue.filter('datetime', function (value) {
+		var d = value;
+		if (typeof(value)==='number') {
+			d = new Date(value);
+		}
+		return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() + ' ' + d.getHours() + ':' + d.getMinutes();
+	});
+	Vue.component('pagination', {
+		template: '<ul class="uk-pagination">' +
+				'<li v-if="! has_previous" class="uk-disabled"><span><i class="uk-icon-angle-double-left"></i></span></li>' +
+				'<li v-if="has_previous"><a v-attr="onclick:\'gotoPage(\' + (page_index-1) + \')\'" href="#0"><i class="uk-icon-angle-double-left"></i></a></li>' +
+				'<li class="uk-active"><span v-text="page_index"></span></li>' +
+				'<li v-if="! has_next" class="uk-disabled"><span><i class="uk-icon-angle-double-right"></i></span></li>' +
+				'<li v-if="has_next"><a v-attr="onclick:\'gotoPage(\' + (page_index+1) + \')\'" href="#0"><i class="uk-icon-angle-double-right"></i></a></li>' +
+			'</ul>'
+	});
+}
+
+$(function() {
+	if (location.pathname === '/' || location.pathname.indexOf('/blog')===0) {
+		$('li[data-url=blogs]').addClass('uk-active');
+	}
+});
+
+// init:
+function _bindSubmit($form) {
+	$form.submit(function (event) {
+		event.preventDefault();
+		showFormError($form, null);
+		var
+			fn_error = $form.attr('fn-error'),
+			fn_success = $form.attr('fn-success'),
+			fn_data = $form.attr('fn-data'),
+			data = fn_data ? window[fn_data]($form) : $form.serialize();
+		var
+			$submit = $form.find('button[type=submit]'),
+			$i = $submit.find('i'),
+			iconClass = $i.attr('class');
+		if (!iconClass || iconClass.indexOf('uk-icon') < 0) {
+			$i = undefined;
+		}
+		$submit.attr('disabled', 'disabled');
+		$i && $i.addClass('uk-icon-spinner').addClass('uk-icon-spin');
+		postJSON($form.attr('action-url'), data, function (err, result) {
+			$i && $i.removeClass('uk-icon-spinner').removeClass('uk-icon-spin');
+			if (err) {
+				console.log('postJSON failed: ' + JSON.stringify(err));
+				$submit.removeAttr('disabled');
+				fn_error ? fn_error() : showFormError($form, err);
+			}
+			else {
+				var r = fn_success ? window[fn_success](result) : false;
+				if (r===false) {
+					$submit.removeAttr('disabled');
+				}
+			}
+		});
+	});
+	$form.find('button[type=submit]').removeAttr('disabled');
+}
+
+$(function () {
+	$('form').each(function () {
+		var $form = $(this);
+		if ($form.attr('action-url')) {
+			_bindSubmit($form);
+		}
+	});
+});

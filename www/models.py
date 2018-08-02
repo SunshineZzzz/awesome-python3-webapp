@@ -32,9 +32,11 @@ class Blog(Model):
 	user_image = StringField(ddl='varchar(500)')
 	name = StringField(ddl='varchar(50)')
 	summary = StringField(ddl='varchar(200)')
+	content = TextField()
+	created_at = FloatField(default=time.time)
 
 class Comment(Model):
-	__table__ = 'comment'
+	__table__ = 'comments'
 
 	id = StringField(primary_key=True, default = next_id, ddl = 'VARCHAR(50)')
 	blog_id = StringField(ddl = 'VARCHAR(50)')
